@@ -1,0 +1,256 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KitchenSathi | Guest Check-in</title>
+
+  <link rel="stylesheet"
+        href="{{ url_for('static', filename='hotel.css') }}">
+</head>
+
+<body>
+
+<header class="navbar">
+  <a class="brand" href="/">
+    <span class="brand-icon">🏔️</span>
+    <span>
+      <strong>KitchenSathi</strong>
+      <small>Your kitchen companion</small>
+    </span>
+  </a>
+
+  <nav class="main-nav">
+    <a href="/" class="nav-link">🛎️ Guest Check-in</a>
+    <a href="/menu" class="nav-link active">🍲 Food Menu</a>
+  </nav>
+
+  <span class="welcome">Namaste! 👋</span>
+</header>
+
+  <main>
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">HOTEL MANAGEMENT</p>
+        <h2>Guest Check-in</h2>
+        <p>Register guests and keep track of their meal plans.</p>
+      </div>
+      <div class="heading-icon">🛎️</div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading">
+        <div>
+          <h3 id="formTitle">Register a new guest</h3>
+          <p>Enter the guest's booking details below.</p>
+        </div>
+        <span class="step-badge">GUEST FORM</span>
+      </div>
+
+      <form id="guestForm">
+        <div class="form-grid">
+          <div class="field">
+            <label for="guestName">Guest full name *</label>
+            <input id="guestName" name="guestName"
+                   type="text" placeholder="e.g. Rahul Sharma" required>
+          </div>
+
+          <div class="field">
+            <label for="roomNumber">Room number *</label>
+            <input id="roomNumber" name="roomNumber"
+                   type="text" placeholder="e.g. 101" required>
+          </div>
+
+          <div class="field">
+            <label for="phone">Phone number</label>
+            <input id="phone" name="phone" type="tel"
+                   inputmode="tel" maxlength="20"
+                   placeholder="Guest contact number">
+          </div>
+
+          <div class="field">
+            <label for="bookingSource">Booking source</label>
+            <select id="bookingSource" name="bookingSource">
+              <option value="Direct booking">Direct booking</option>
+              <option value="Walk-in">Walk-in</option>
+              <option value="Online booking">Online booking</option>
+              <option value="Travel agent">Travel agent</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="checkinDate">Check-in date *</label>
+            <input id="checkinDate" name="checkinDate"
+                   type="date" required>
+          </div>
+
+          <div class="field">
+            <label for="checkoutDate">Check-out date *</label>
+            <input id="checkoutDate" name="checkoutDate"
+                   type="date" required>
+          </div>
+
+          <div class="field">
+            <label for="adults">Number of adults *</label>
+            <input id="adults" name="adults" type="number"
+                   min="1" max="50" value="2" required>
+          </div>
+
+          <div class="field">
+            <label for="children">Number of children</label>
+            <input id="children" name="children" type="number"
+                   min="0" max="50" value="0" required>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section-title">
+          <div>
+            <h3>Meals included in booking</h3>
+            <p>Select the meals included in the guest's package.</p>
+          </div>
+          <span>🍽️</span>
+        </div>
+
+        <div class="meal-grid">
+          <div class="meal-card">
+            <span class="meal-icon">☕</span>
+            <div class="meal-info">
+              <strong>Breakfast</strong>
+              <small>Morning meal</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="breakfast">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="meal-card">
+            <span class="meal-icon">🍛</span>
+            <div class="meal-info">
+              <strong>Lunch</strong>
+              <small>Afternoon meal</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="lunch">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="meal-card">
+            <span class="meal-icon">🌙</span>
+            <div class="meal-info">
+              <strong>Dinner</strong>
+              <small>Evening meal</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="dinner">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field status-field">
+          <label for="status">Guest status *</label>
+          <select id="status" name="status" required>
+            <option value="Expected — not arrived">
+              Expected — not arrived
+            </option>
+            <option value="Checked in — arrived">
+              Checked in — arrived
+            </option>
+            <option value="Checked out — departed">
+              Checked out — departed
+            </option>
+          </select>
+        </div>
+
+        <div id="formMessage" class="message" role="status"
+             aria-live="polite"></div>
+
+        <div class="form-actions">
+          <button type="button" id="cancelEdit"
+                  class="button secondary hidden">
+            Cancel edit
+          </button>
+
+          <button type="reset" id="resetForm"
+                  class="button secondary">
+            Clear form
+          </button>
+
+          <button type="submit" id="saveButton"
+                  class="button primary">
+            <span id="saveButtonText">＋ Add Guest</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card register-card">
+      <div class="card-heading register-heading">
+        <div>
+          <p class="eyebrow">YOUR RECORDS</p>
+          <h3>Guest Register</h3>
+          <p>All guests saved in the hotel database.</p>
+        </div>
+
+        <div class="guest-count">
+          <strong id="guestCount">0</strong>
+          <span>Guests</span>
+        </div>
+      </div>
+
+      <div class="table-toolbar">
+        <input id="searchInput" type="search"
+               placeholder="Search guest or room number..."
+               aria-label="Search guests">
+
+        <select id="statusFilter" aria-label="Filter by guest status">
+          <option value="All">All statuses</option>
+          <option value="Expected — not arrived">
+            Expected
+          </option>
+          <option value="Checked in — arrived">
+            Checked in
+          </option>
+          <option value="Checked out — departed">
+            Checked out
+          </option>
+        </select>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Guest / Room</th>
+              <th>Stay</th>
+              <th>Guests</th>
+              <th>Meals included</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="guestTableBody"></tbody>
+        </table>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        <span>🛎️</span>
+        <h3>No guests registered yet</h3>
+        <p>Add your first guest using the form above.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>🏔️</span>
+    <p>KitchenSathi · Less waste, happier kitchens.</p>
+  </footer>
+
+  <script src="{{ url_for('static', filename='hotel.js') }}"></script>
+</body>
+</html>
