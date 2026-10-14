@@ -1,0 +1,192 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KitchenSathi | Your Kitchen Companion</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="navbar">
+    <a href="#" class="brand">
+      <div class="brand-icon">🏔️</div>
+      <div>
+        <h2>KitchenSathi</h2>
+        <span>Your kitchen companion</span>
+      </div>
+    </a>
+    <div class="greeting">नमस्ते! Namaste 👋</div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-content">
+        <span class="eyebrow">🌿 SMARTER KITCHEN, LESS WASTE</span>
+        <h1>Good food.<br><span>Less waste.</span></h1>
+        <p>Plan today's meals without the guesswork.
+          Let's get your kitchen ready!</p>
+      </div>
+
+      <div class="mountains" aria-hidden="true">
+        <div class="sun"></div>
+        <div class="peak peak-back"></div>
+        <div class="peak peak-front"></div>
+      </div>
+    </section>
+
+    <section class="planner">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">YOUR DAILY PLANNER</span>
+          <h2>Let's plan today's kitchen</h2>
+          <p>Just a few simple questions.</p>
+        </div>
+        <div class="calendar">📅</div>
+      </div>
+
+      <form id="kitchenForm">
+
+        <!-- Meal selection -->
+        <div class="form-section">
+          <label class="question">
+            <span class="number">1</span>
+            Which meal are we planning?
+          </label>
+
+          <div class="options meal-options">
+            <button type="button" class="option meal selected"
+                    data-group="meal" data-value="Breakfast">
+              <span class="option-icon">☕</span>
+              <strong>Breakfast</strong>
+              <small>नाश्ता</small>
+            </button>
+
+            <button type="button" class="option meal"
+                    data-group="meal" data-value="Lunch">
+              <span class="option-icon">☀️</span>
+              <strong>Lunch</strong>
+              <small>दोपहर का खाना</small>
+            </button>
+
+            <button type="button" class="option meal"
+                    data-group="meal" data-value="Dinner">
+              <span class="option-icon">🌙</span>
+              <strong>Dinner</strong>
+              <small>रात का खाना</small>
+            </button>
+          </div>
+        </div>
+
+        <!-- Occupancy -->
+        <div class="form-section">
+          <label for="occupancy" class="question">
+            <span class="number">2</span>
+            How full is your property today?
+          </label>
+
+          <div class="occupancy-card">
+            <div class="occupancy-info">
+              <span>Rooms occupied</span>
+              <strong><span id="occupancyValue">75</span>%</strong>
+            </div>
+
+            <input type="range" id="occupancy"
+                   min="0" max="100" value="75" step="5">
+
+            <div class="range-labels">
+              <span>Mostly empty</span>
+              <span>Fully booked</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weather -->
+        <div class="form-section">
+          <label class="question">
+            <span class="number">3</span>
+            What's the weather like?
+          </label>
+
+          <div class="options weather-options">
+            <button type="button" class="option weather selected"
+                    data-group="weather" data-value="Pleasant">
+              <span>☀️</span><small>अच्छा</small>
+            </button>
+
+            <button type="button" class="option weather"
+                    data-group="weather" data-value="Rainy">
+              <span>🌧️</span><small>बारिश</small>
+            </button>
+
+            <button type="button" class="option weather"
+                    data-group="weather" data-value="Cold">
+              <span>🥶</span><small>ठंड</small>
+            </button>
+
+            <button type="button" class="option weather"
+                    data-group="weather" data-value="Snowy">
+              <span>❄️</span><small>बर्फबारी</small>
+            </button>
+          </div>
+        </div>
+
+        <!-- Special event -->
+        <div class="form-section">
+          <label class="question">
+            <span class="number">4</span>
+            Any special event or group booking?
+          </label>
+
+          <div class="options event-options">
+            <button type="button" class="option event selected"
+                    data-group="event" data-value="No">
+              No, a normal day
+            </button>
+
+            <button type="button" class="option event"
+                    data-group="event" data-value="Yes">
+              Yes, extra guests
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="submit-button">
+          🍲 Make My Kitchen Plan <span>→</span>
+        </button>
+      </form>
+
+      <!-- Results appear here -->
+      <section id="result" class="result-card hidden" aria-live="polite">
+        <div class="result-top">
+          <div>
+            <span class="eyebrow">YOUR KITCHEN PLAN</span>
+            <h3 id="resultTitle">Your meal plan is ready!</h3>
+          </div>
+          <span class="result-emoji">👨‍🍳</span>
+        </div>
+
+        <div class="result-number">
+          <strong id="guestCount">0</strong>
+          <span>estimated diners</span>
+        </div>
+
+        <p id="resultMessage"></p>
+
+        <div class="demo-note">
+          💡 This is a demo estimate. AI prediction will be connected later.
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <div>🏔️</div>
+    <p>Made for the people who make guests feel at home.</p>
+    <small>KitchenSathi · Less waste, happier kitchens.</small>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

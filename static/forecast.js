@@ -264,6 +264,30 @@ async function generateResortForecast() {
       `Forecast for ${data.date} · ${data.meal}. ` +
       "Estimate based on the trained historical demand model.";
 
+    // List the items the kitchen can expect to sell.
+    const list = $("expectedItems");
+    list.replaceChildren();
+
+    if (!data.items || data.items.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "No item-level forecast for this meal.";
+      list.append(empty);
+    } else {
+      data.items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "expected-item";
+
+        const name = document.createElement("span");
+        name.textContent = item.name;
+
+        const qty = document.createElement("strong");
+        qty.textContent = formatNumber(item.quantity);
+
+        card.append(name, qty);
+        list.append(card);
+      });
+    }
+
     // Show the forecast result below the form.
     result.replaceChildren();
 
@@ -302,5 +326,5 @@ window.addEventListener("resize", () => {
   }
 });
 
-// Initial page load.
-loadDashboard();
+// Initial page load: load the test results, then show a first forecast.
+loadDashboard().then(generateResortForecast);

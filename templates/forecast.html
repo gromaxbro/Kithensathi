@@ -11,12 +11,11 @@
   <aside class="sidebar">
     <div class="brand"><span class="brand-icon">K</span> KitchenSathi</div>
     <p class="nav-label">WORKSPACE</p>
-    <a href="/">Overview</a>
-    <a href="/guests">Guest Management</a>
+    <a href="/">Guest Check-in</a>
     <a href="/menu">Menu Management</a>
     <a href="/billing">Billing & Sales</a>
     <a href="/forecast" class="active">Demand Forecast</a>
-    <a href="/inventory">Inventory</a>
+    <a href="/login" data-logout>Log out{% if current_user %} ({{ current_user.username }}){% endif %}</a>
     <div class="sidebar-bottom">
       <span class="status-dot"></span> Forecast system
       <small>Historical sales model</small>
@@ -181,5 +180,6 @@
   </main>
 
   <script src="{{ url_for('static', filename='forecast.js') }}"></script>
+<script src="{{ url_for('static', filename='logout.js') }}"></script>
 </body>
 </html>

@@ -802,3 +802,6 @@ footer span {
     grid-template-columns: 1fr;
   }
 }
+
+.sidebar-bottom .logout-link{text-decoration:none;font-weight:700;white-space:nowrap}
+.sidebar-bottom .logout-link:hover{text-decoration:underline}

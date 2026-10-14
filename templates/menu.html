@@ -17,6 +17,7 @@
       </span>
     </a>
     <a class="back-link" href="/">← Guest Register</a>
+    <a href="/login" data-logout class="logout-link">Log out{% if current_user %} ({{ current_user.username }}){% endif %}</a>
   </header>
 
   <main class="container">
@@ -112,5 +113,6 @@
   <footer>🏔️ KitchenSathi · Less waste, happier kitchens.</footer>
 
   <script src="{{ url_for('static', filename='menu.js') }}"></script>
+<script src="{{ url_for('static', filename='logout.js') }}"></script>
 </body>
 </html>

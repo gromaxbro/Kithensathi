@@ -382,3 +382,5 @@ footer {
 .delete-menu-button:hover {
   background: #ffe0dc;
 }
+
+.logout-link{color:#b42318;text-decoration:none;font-weight:650}

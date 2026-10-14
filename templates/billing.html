@@ -21,15 +21,14 @@
 
       <p class="nav-label">WORKSPACE</p>
       <nav>
-        <a href="/">▦ <span>Dashboard</span></a>
-        <a href="/guests">♙ <span>Guest Management</span></a>
+        <a href="/">♙ <span>Guest Check-in</span></a>
         <a href="/menu">☷ <span>Menu Management</span></a>
         <a href="/forecast">↗ <span>Demand Forecast</span></a>
-        <a href="/inventory">▤ <span>Inventory & Waste</span></a>
         <a class="active" href="/billing">₹ <span>Billing & Sales</span></a>
       </nav>
 
       <div class="sidebar-bottom">
+        <a href="/login" data-logout class="logout-link" style="margin-left:auto;font-size:11px;color:#b42318">Log out{% if current_user %} ({{ current_user.username }}){% endif %}</a>
         <div class="avatar">KS</div>
         <div>
           <strong>Hotel Manager</strong>
@@ -47,6 +46,25 @@
         </div>
         <div class="today-chip" id="todayLabel">Today's sales</div>
       </header>
+
+      <section class="stats-grid">
+        <article class="stat-card">
+          <div class="stat-top"><span>Today's revenue</span><span class="stat-icon">₹</span></div>
+          <h2 id="revenueStat">₹0.00</h2><p>From bills saved today</p>
+        </article>
+        <article class="stat-card">
+          <div class="stat-top"><span>Bills today</span><span class="stat-icon blue">#</span></div>
+          <h2 id="billsStat">0</h2><p>Bills created</p>
+        </article>
+        <article class="stat-card">
+          <div class="stat-top"><span>Items sold</span><span class="stat-icon orange">☷</span></div>
+          <h2 id="itemsStat">0</h2><p>Menu items today</p>
+        </article>
+        <article class="stat-card">
+          <div class="stat-top"><span>Average bill</span><span class="stat-icon purple">≈</span></div>
+          <h2 id="averageStat">₹0.00</h2><p>Revenue per bill</p>
+        </article>
+      </section>
 
       <div class="content-grid">
         <section class="panel billing-panel">
@@ -147,7 +165,34 @@
             <p id="billMessage" class="message" role="status"></p>
           </form>
         </section>
-        <section class="panel" style="margin-top: 20px; padding: 20px;">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Sales history</h2>
+              <p>Recent bills saved in the system.</p>
+            </div>
+            <button type="button" id="refreshBtn" class="refresh-btn" aria-label="Refresh sales">↻</button>
+          </div>
+          <div class="history-controls">
+            <input id="searchSales" type="search" placeholder="Search bill number or customer...">
+            <input id="salesDate" type="date" aria-label="Filter by date">
+          </div>
+          <div class="history-table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr><th>Bill</th><th>Customer</th><th>Amount</th><th>Payment</th></tr>
+              </thead>
+              <tbody id="salesBody">
+                <tr><td colspan="4" class="table-message">Loading sales...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="history-note">Clear the date to see every bill.</p>
+        </section>
+
+      </div>
+
+        <section class="panel" style="margin-top: 15px; padding-top: 16px;">
   <h2>Import Sales Data</h2>
   <p>Upload a CSV file containing historical hotel sales.</p>
 
@@ -168,11 +213,9 @@
   <p id="csvMessage" class="message" role="status"></p>
 </section>
 
-      </div>
-
-
       <footer>KitchenSathi <span>•</span> Billing & Sales</footer>
     </main>
   </div>
+<script src="{{ url_for('static', filename='logout.js') }}"></script>
 </body>
 </html>

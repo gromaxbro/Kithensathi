@@ -354,59 +354,85 @@ def menu_item_to_dict(row):
 
 
 
-# from pathlib import Path
-# import pandas as pd
+# ---------------- DEMAND FORECAST ----------------
+
+MODEL_PATH = Path(__file__).resolve().parent / "models" / "item_demand_model.joblib"
+TEST_PREDICTIONS_PATH = (
+    Path(__file__).resolve().parent / "models" / "item_test_predictions.csv"
+)
+
+# Which sale hours belong to each meal.
+MEAL_HOURS = {
+    "Breakfast": range(5, 12),
+    "Lunch": range(12, 17),
+    "Dinner": range(17, 24),
+}
+
+_saved_model = None
+
+
+def load_saved_model():
+    """Load the trained model once and reuse it."""
+    global _saved_model
+    if _saved_model is None:
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"Model not found: {MODEL_PATH.name}. Run model.py first."
+            )
+        _saved_model = joblib.load(MODEL_PATH)
+    return _saved_model
+
 
 @app.route("/api/forecast/dashboard-data")
 def forecast_dashboard_data():
-    base_dir = Path(__file__).resolve().parent.parent
-    predictions_file = base_dir / "test_predictions.csv"
-
-    if not predictions_file.exists():
+    if not TEST_PREDICTIONS_PATH.exists():
         return jsonify({
-            "error": "test_predictions.csv not found. Run website/model.py first."
+            "error": "models/item_test_predictions.csv not found. Run model.py first."
         }), 404
 
-    df = pd.read_csv(predictions_file)
+    df = pd.read_csv(TEST_PREDICTIONS_PATH)
 
-    required = {"date", "meal", "actual_covers", "predicted_covers"}
+    required = {"date", "quantity", "predicted_quantity"}
     missing = required - set(df.columns)
-
     if missing:
         return jsonify({
             "error": f"Prediction file is missing columns: {sorted(missing)}"
         }), 500
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df.dropna(
-        subset=["date", "actual_covers", "predicted_covers"]
-    ).sort_values("date")
+    df = df.dropna(subset=["date", "quantity", "predicted_quantity"])
 
     if df.empty:
         return jsonify({"error": "No valid test predictions found."}), 500
 
-    from sklearn.metrics import mean_absolute_error
+    # Average error per test record (one record = item + date + hour).
+    mae = (df["quantity"] - df["predicted_quantity"]).abs().mean()
 
-    mae = mean_absolute_error(
-        df["actual_covers"],
-        df["predicted_covers"]
+    # One bar pair per day: total actual vs total predicted units.
+    daily = (
+        df.groupby(df["date"].dt.strftime("%Y-%m-%d"))[
+            ["quantity", "predicted_quantity"]
+        ]
+        .sum()
+        .sort_index()
+        .tail(30)
     )
 
     return jsonify({
         "total_test_rows": int(len(df)),
         "mae": round(float(mae), 2),
-        "actual_total": int(df["actual_covers"].sum()),
-        "predicted_total": int(df["predicted_covers"].sum()),
-        "meals": sorted(df["meal"].dropna().astype(str).unique().tolist()),
+        "actual_total": int(round(df["quantity"].sum())),
+        "predicted_total": int(round(df["predicted_quantity"].sum())),
+        "meals": list(MEAL_HOURS),
         "weather_options": ["Sunny", "Cloudy", "Rainy"],
         "history": [
             {
-                "date": row.date.strftime("%Y-%m-%d"),
-                "actual": float(row.actual_covers),
-                "predicted": float(row.predicted_covers)
+                "date": day,
+                "actual": float(row.quantity),
+                "predicted": float(row.predicted_quantity),
             }
-            for row in df.tail(30).itertuples()
-        ]
+            for day, row in daily.iterrows()
+        ],
     })
 
 @app.route("/api/menu", methods=["GET"])
@@ -1167,108 +1193,96 @@ def import_sales_csv():
 
 
 @app.route("/api/forecast/predict", methods=["POST"])
-def predict_resort_demand():
-    data = request.get_json(silent=True) or {}
-
-    # Adjust this path if your model is saved elsewhere.
-    model_path = (
-        Path(__file__).resolve().parent.parent
-        / "kitchensathi_model.joblib"
-    )
-
-    if not model_path.exists():
-        return jsonify({
-            "error": f"Model file not found: {model_path}"
-        }), 404
-
-    try:
-        selected_date = date.fromisoformat(data["date"])
-        meal = data["meal"]
-        occupancy = float(data["occupancy_pct"])
-        event = int(data["event"])
-        weather = data["weather"]
-
-        if meal not in {"Breakfast", "Lunch", "Dinner"}:
-            raise ValueError("Meal must be Breakfast, Lunch or Dinner.")
-
-        if not 0 <= occupancy <= 100:
-            raise ValueError("Occupancy must be between 0 and 100.")
-
-        if event not in (0, 1):
-            raise ValueError("Event must be 0 or 1.")
-
-        sample = pd.DataFrame([{
-            "meal": meal,
-            "occupancy_pct": occupancy,
-            "event": event,
-            "weather": weather,
-            "weekday": selected_date.weekday(),
-            "month": selected_date.month,
-        }])
-
-        model = joblib.load(model_path)
-        prediction = max(0, round(float(model.predict(sample)[0])))
-
-        return jsonify({
-            "date": selected_date.isoformat(),
-            "meal": meal,
-            "predicted_covers": prediction,
-        })
-
-    except (KeyError, TypeError, ValueError) as exc:
-        return jsonify({"error": str(exc)}), 400
-
-
-
-@app.route("/api/forecast/predict", methods=["POST"])
 def predict_demand():
-    from pathlib import Path
-    from datetime import datetime
-    import numpy as np
-
-    base_dir = Path(__file__).resolve().parent
-    model_path = base_dir / "models" / "demand_model.joblib"
-
-    if not model_path.exists():
-        return jsonify({"error": "Model not found. Run train_model.py first."}), 404
-
     data = request.get_json(silent=True) or {}
-    selected_date = data.get("date")
-    selected_time = str(data.get("time_of_sale", "")).strip()
 
     try:
-        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
+        selected_date = date.fromisoformat(str(data.get("date", "")))
+    except ValueError:
         return jsonify({"error": "Choose a valid forecast date."}), 400
 
-    saved = joblib.load(model_path)
+    meal = data.get("meal")
+    if meal not in MEAL_HOURS:
+        return jsonify({"error": "Meal must be Breakfast, Lunch or Dinner."}), 400
+
+    try:
+        saved = load_saved_model()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+
     model = saved["model"]
     features = saved["features"]
+    item_types = {
+        item["item_name"]: item["item_type"] for item in saved["items"]
+    }
 
-    # Match the exact feature columns used during training.
-    row = {feature: 0 for feature in features}
-    row["weekday"] = target_date.weekday()
-    row["month"] = target_date.month
-    row["day"] = target_date.day
-    row["is_weekend"] = int(target_date.weekday() >= 5)
+    # Which (item, hour) combinations really sold, and on what share of days.
+    # The model was trained only on hours when something sold, so each
+    # prediction is weighted by how often that item sells at that hour.
+    with get_db() as conn:
+        sales = pd.read_sql_query(
+            "SELECT sale_date, time_of_sale, item_name FROM imported_sales",
+            conn,
+        )
 
-    time_feature = f"time_of_sale_{selected_time}"
-    if time_feature not in row:
+    sales["hour"] = pd.to_datetime(
+        sales["time_of_sale"], format="%H:%M", errors="coerce"
+    ).dt.hour
+    sales = sales.dropna(subset=["sale_date", "hour", "item_name"])
+    sales["item_name"] = sales["item_name"].astype(str).str.strip()
+    sales["hour"] = sales["hour"].astype(int)
+
+    total_days = sales["sale_date"].nunique()
+    sales = sales[sales["hour"].isin(MEAL_HOURS[meal])]
+    sales = sales[sales["item_name"].isin(item_types)]
+
+    if total_days == 0 or sales.empty:
         return jsonify({
-            "error": "That sale time was not seen during training. Choose an available time."
-        }), 400
+            "error": f"No past {meal.lower()} sales found. "
+                     "Import a sales CSV on the Billing page first."
+        }), 404
 
-    row[time_feature] = 1
-    X = pd.DataFrame([row], columns=features)
-    prediction = float(model.predict(X)[0])
+    combos = (
+        sales.groupby(["item_name", "hour"])["sale_date"]
+        .nunique()
+        .reset_index(name="days_sold")
+    )
+    combos["share"] = combos["days_sold"] / total_days
+
+    weekday = selected_date.weekday()
+    rows = pd.DataFrame({
+        "item_name": combos["item_name"],
+        "item_type": combos["item_name"].map(item_types),
+        "hour": combos["hour"],
+        "weekday": weekday,
+        "month": selected_date.month,
+        "day": selected_date.day,
+        "is_weekend": int(weekday >= 5),
+    })[features]
+
+    combos["expected"] = (
+        pd.Series(model.predict(rows), index=combos.index).clip(lower=0)
+        * combos["share"]
+    )
+
+    per_item = (
+        combos.groupby("item_name")["expected"].sum()
+        .sort_values(ascending=False)
+    )
 
     return jsonify({
-        "date": selected_date,
-        "time_of_sale": selected_time,
-        "predicted_orders": max(0, round(prediction, 1)),
-        "unit": "orders",
-        "note": "Order count is a proxy for demand, not a verified customer count."
+        "date": selected_date.isoformat(),
+        "meal": meal,
+        "predicted_covers": int(round(per_item.sum())),
+        "items": [
+            {"name": name, "quantity": round(float(qty), 1)}
+            for name, qty in per_item.items()
+            if qty >= 0.05
+        ],
+        "note": "Estimate from past sales patterns (item, hour, weekday, "
+                "date). Weather, occupancy and events are not used yet.",
     })
+
 
 @app.route("/api/sales/imported", methods=["GET"])
 def get_imported_sales():
@@ -1300,6 +1314,10 @@ def get_imported_sales():
         return jsonify(error="Could not load imported sales."), 500
 
 
+
+# Sign up / log in. Every page and API route below requires a logged-in user.
+from auth import init_auth
+init_auth(app)
 
 # Initialize the database once when the application starts.
 init_db()

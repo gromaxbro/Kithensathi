@@ -27,6 +27,7 @@
   </nav>
 
   <span class="welcome">Namaste! 👋</span>
+  <a href="/login" data-logout class="logout-link">Log out{% if current_user %} ({{ current_user.username }}){% endif %}</a>
 </header>
 
   <main>
@@ -252,5 +253,6 @@
   </footer>
 
   <script src="{{ url_for('static', filename='hotel.js') }}"></script>
+<script src="{{ url_for('static', filename='logout.js') }}"></script>
 </body>
 </html>
