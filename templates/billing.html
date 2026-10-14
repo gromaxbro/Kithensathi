@@ -1,0 +1,178 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing & Sales | KitchenSathi</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='billing.css') }}">
+  <script src="{{ url_for('static', filename='billing.js') }}" defer></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">K</div>
+        <div>
+          <h2>KitchenSathi</h2>
+          <p>Hotel management</p>
+        </div>
+      </div>
+
+      <p class="nav-label">WORKSPACE</p>
+      <nav>
+        <a href="/">▦ <span>Dashboard</span></a>
+        <a href="/guests">♙ <span>Guest Management</span></a>
+        <a href="/menu">☷ <span>Menu Management</span></a>
+        <a href="/forecast">↗ <span>Demand Forecast</span></a>
+        <a href="/inventory">▤ <span>Inventory & Waste</span></a>
+        <a class="active" href="/billing">₹ <span>Billing & Sales</span></a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="avatar">KS</div>
+        <div>
+          <strong>Hotel Manager</strong>
+          <small>KitchenSathi account</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">HOTEL OPERATIONS / FINANCE</p>
+          <h1>Billing & Sales</h1>
+          <p class="subtitle">Manage customer bills and track your sales.</p>
+        </div>
+        <div class="today-chip" id="todayLabel">Today's sales</div>
+      </header>
+
+      <div class="content-grid">
+        <section class="panel billing-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Create a bill</h2>
+              <p>Add items and calculate the total.</p>
+            </div>
+            <span class="live-tag"><span></span> New bill</span>
+          </div>
+
+          <form id="billForm">
+            <div class="form-grid">
+              <label>
+                Customer name
+                <input id="customerName" type="text" placeholder="e.g. Rahul Sharma">
+              </label>
+              <label>
+                Room number
+                <input id="roomNumber" type="text" placeholder="Optional">
+              </label>
+              <label>
+                Customer type
+                <select id="customerType">
+                  <option value="walk_in">Walk-in</option>
+                  <option value="resident">Resident guest</option>
+                </select>
+              </label>
+              <label>
+                Meal
+                <select id="mealType">
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="section-label">ADD MENU ITEMS</div>
+            <div class="add-item-row">
+              <label class="menu-select">
+                <span>Menu item</span>
+                <select id="menuItem">
+                  <option value="">Loading menu...</option>
+                </select>
+              </label>
+              <label class="qty-select">
+                <span>Qty</span>
+                <input id="itemQuantity" type="number" min="1" step="1" value="1">
+              </label>
+              <button type="button" id="addItemBtn" class="btn btn-secondary">+ Add</button>
+            </div>
+
+            <div class="cart-wrap">
+              <table class="cart-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Price</th>
+                    <th>Qty</th>
+                    <th>Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="cartBody">
+                  <tr class="empty-row">
+                    <td colspan="5">No items added yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="bill-bottom">
+              <div class="payment-section">
+                <label for="paymentMethod">Payment method</label>
+                <select id="paymentMethod">
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="other">Other</option>
+                </select>
+                <label for="discount">Discount (₹)</label>
+                <input id="discount" type="number" min="0" step="0.01" value="0">
+              </div>
+
+              <div class="totals">
+                <div><span>Subtotal</span><strong id="subtotal">₹0.00</strong></div>
+                <div><span>Discount</span><strong id="discountTotal">−₹0.00</strong></div>
+                <div class="grand-total"><span>Total amount</span><strong id="grandTotal">₹0.00</strong></div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" id="clearBillBtn" class="btn btn-light">Clear bill</button>
+              <button type="submit" id="saveBillBtn" class="btn btn-primary">Save bill →</button>
+            </div>
+            <p id="billMessage" class="message" role="status"></p>
+          </form>
+        </section>
+        <section class="panel" style="margin-top: 20px; padding: 20px;">
+  <h2>Import Sales Data</h2>
+  <p>Upload a CSV file containing historical hotel sales.</p>
+
+  <form id="csvForm" enctype="multipart/form-data">
+    <input
+      type="file"
+      id="csvFile"
+      name="file"
+      accept=".csv,text/csv"
+      required
+    >
+
+    <button type="submit" class="btn btn-primary">
+      + Add CSV
+    </button>
+  </form>
+
+  <p id="csvMessage" class="message" role="status"></p>
+</section>
+
+      </div>
+
+
+      <footer>KitchenSathi <span>•</span> Billing & Sales</footer>
+    </main>
+  </div>
+</body>
+</html>

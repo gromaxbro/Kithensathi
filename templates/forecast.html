@@ -1,0 +1,185 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KitchenSathi | Demand Forecast</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='forecast.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon">K</span> KitchenSathi</div>
+    <p class="nav-label">WORKSPACE</p>
+    <a href="/">Overview</a>
+    <a href="/guests">Guest Management</a>
+    <a href="/menu">Menu Management</a>
+    <a href="/billing">Billing & Sales</a>
+    <a href="/forecast" class="active">Demand Forecast</a>
+    <a href="/inventory">Inventory</a>
+    <div class="sidebar-bottom">
+      <span class="status-dot"></span> Forecast system
+      <small>Historical sales model</small>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">KITCHEN OPERATIONS</p>
+        <h1>Demand Forecast</h1>
+        <p class="muted">Use historical order patterns to plan ahead.</p>
+      </div>
+      <div class="today" id="today"></div>
+    </header>
+
+    <section class="notice">
+      <strong>Model v1</strong>
+      <span>Uses historical order counts and calendar features. Weather, festivals and occupancy are not included yet.</span>
+    </section>
+
+<section class="demand-hero">
+  <div class="demand-hero-top">
+    <div>
+      <span class="demand-label">KITCHENSATHI AI PREDICTION</span>
+      <h2>Expected Demand</h2>
+      <p>Plan your kitchen preparation for the selected date.</p>
+    </div>
+    <div class="demand-icon">↗</div>
+  </div>
+
+  <div class="demand-number">
+    <strong id="expectedOrders">—</strong>
+    <span>orders expected</span>
+  </div>
+
+  <div class="demand-divider"></div>
+
+  <h3>What can we expect to sell?</h3>
+  <div id="expectedItems" class="expected-items">
+    <p>Item-level forecasts will appear here when connected to the sales model.</p>
+  </div>
+
+  <p class="demand-footnote" id="demandFootnote">
+    Estimates are based on historical sales patterns.
+  </p>
+</section>
+
+    <section class="kpis">
+      <article class="kpi">
+        <span class="kpi-label">Test records</span>
+        <strong id="testRows">—</strong>
+        <small>Held-out model data</small>
+      </article>
+      <article class="kpi">
+        <span class="kpi-label">Average error (MAE)</span>
+        <strong id="mae">—</strong>
+        <small>Orders per test record</small>
+      </article>
+      <article class="kpi">
+        <span class="kpi-label">Actual test orders</span>
+        <strong id="actualTotal">—</strong>
+        <small>Across the test period</small>
+      </article>
+      <article class="kpi">
+        <span class="kpi-label">Predicted test orders</span>
+        <strong id="predictedTotal">—</strong>
+        <small>Across the same period</small>
+      </article>
+    </section>
+
+    <section class="panel forecast-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Generate a forecast</h2>
+          <p class="muted">Choose a date and a sale-time category from your data.</p>
+        </div>
+        <span class="pill">Prediction</span>
+      </div>
+
+      <form id="forecastForm" class="forecast-form">
+        <label>
+          Forecast date
+          <input type="date" id="forecastDate" required>
+        </label>
+
+<label>
+  Meal
+  <select id="meal" required>
+    <option value="Breakfast">Breakfast</option>
+    <option value="Lunch">Lunch</option>
+    <option value="Dinner">Dinner</option>
+  </select>
+</label>
+
+<label>
+  Occupancy (%)
+  <input id="occupancy" type="number" min="0" max="100"
+         value="85" required>
+</label>
+
+<label>
+  Special event?
+  <select id="event" required>
+    <option value="0">No</option>
+    <option value="1">Yes</option>
+  </select>
+</label>
+
+<label>
+  Weather
+  <select id="weather" required>
+    <option value="Sunny">Sunny</option>
+    <option value="Cloudy">Cloudy</option>
+    <option value="Rainy">Rainy</option>
+  </select>
+</label>
+
+        <button type="submit" id="forecastButton">Generate forecast</button>
+      </form>
+
+      <div id="forecastResult" class="result hidden" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Actual vs predicted orders</h2>
+          <p class="muted">Recent records from the held-out test dataset.</p>
+        </div>
+        <div class="legend">
+          <span><i class="actual-dot"></i> Actual</span>
+          <span><i class="predicted-dot"></i> Predicted</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="demandChart"></canvas>
+      </div>
+      <p class="chart-note">Each point represents a date and sale-time category in the test data. Hover is not required; use the labels to compare values.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Recent test results</h2>
+          <p class="muted">Check whether the predictions track real order counts.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Actual orders</th><th>Predicted orders</th><th>Absolute error</th></tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="4">Loading results…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="footer-note">KitchenSathi · Forecasts are estimates, not guaranteed sales or verified customer counts.</p>
+  </main>
+
+  <script src="{{ url_for('static', filename='forecast.js') }}"></script>
+</body>
+</html>

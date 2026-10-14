@@ -1,9 +1,20 @@
 
 from flask import Flask, render_template, request, jsonify
 import sqlite3
-from pathlib import Path
+import pandas as pd
+import joblib
 from datetime import date
 
+from pathlib import Path
+from datetime import date
+import csv
+import io
+import sqlite3
+import math
+from flask import request, jsonify
+import pandas as pd
+import joblib
+from datetime import date
 app = Flask(__name__)
 
 DATABASE = Path(__file__).resolve().parent / "hotel_guests.db"
@@ -342,6 +353,62 @@ def menu_item_to_dict(row):
     }
 
 
+
+# from pathlib import Path
+# import pandas as pd
+
+@app.route("/api/forecast/dashboard-data")
+def forecast_dashboard_data():
+    base_dir = Path(__file__).resolve().parent.parent
+    predictions_file = base_dir / "test_predictions.csv"
+
+    if not predictions_file.exists():
+        return jsonify({
+            "error": "test_predictions.csv not found. Run website/model.py first."
+        }), 404
+
+    df = pd.read_csv(predictions_file)
+
+    required = {"date", "meal", "actual_covers", "predicted_covers"}
+    missing = required - set(df.columns)
+
+    if missing:
+        return jsonify({
+            "error": f"Prediction file is missing columns: {sorted(missing)}"
+        }), 500
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(
+        subset=["date", "actual_covers", "predicted_covers"]
+    ).sort_values("date")
+
+    if df.empty:
+        return jsonify({"error": "No valid test predictions found."}), 500
+
+    from sklearn.metrics import mean_absolute_error
+
+    mae = mean_absolute_error(
+        df["actual_covers"],
+        df["predicted_covers"]
+    )
+
+    return jsonify({
+        "total_test_rows": int(len(df)),
+        "mae": round(float(mae), 2),
+        "actual_total": int(df["actual_covers"].sum()),
+        "predicted_total": int(df["predicted_covers"].sum()),
+        "meals": sorted(df["meal"].dropna().astype(str).unique().tolist()),
+        "weather_options": ["Sunny", "Cloudy", "Rainy"],
+        "history": [
+            {
+                "date": row.date.strftime("%Y-%m-%d"),
+                "actual": float(row.actual_covers),
+                "predicted": float(row.predicted_covers)
+            }
+            for row in df.tail(30).itertuples()
+        ]
+    })
+
 @app.route("/api/menu", methods=["GET"])
 def get_menu():
     try:
@@ -493,6 +560,746 @@ def deactivate_menu_item(item_id):
     except sqlite3.Error:
         app.logger.exception("Failed to deactivate menu item")
         return jsonify(error="Could not deactivate food item."), 500
+
+
+
+# ---------------- BILLING & SALES ----------------
+
+PAYMENT_METHODS = {"cash", "upi", "card", "other"}
+MEAL_TYPES = {"breakfast", "lunch", "dinner", "other"}
+CUSTOMER_TYPES = {"walk_in", "resident"}
+
+
+def init_billing_db():
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_name TEXT NOT NULL,
+                customer_type TEXT NOT NULL,
+                room_number TEXT,
+                meal_type TEXT NOT NULL,
+                payment_method TEXT NOT NULL,
+                subtotal_paise INTEGER NOT NULL,
+                discount_paise INTEGER NOT NULL DEFAULT 0,
+                total_paise INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bill_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bill_id INTEGER NOT NULL,
+                menu_item_id INTEGER,
+                item_name TEXT NOT NULL,
+                unit_price_paise INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+                line_total_paise INTEGER NOT NULL,
+                FOREIGN KEY (bill_id) REFERENCES bills(id)
+                    ON DELETE CASCADE
+            )
+        """)
+
+
+# Create the billing tables when the application starts.
+init_billing_db()
+
+
+
+@app.route("/forecast")
+def forecast_dashboard():
+    return render_template("forecast.html")
+
+
+@app.route("/api/bills", methods=["GET"])
+def get_bills():
+    try:
+        with get_db() as conn:
+            bills = conn.execute("""
+                SELECT * FROM bills
+                ORDER BY id DESC
+                LIMIT 500
+            """).fetchall()
+
+            result = []
+
+            for bill in bills:
+                items = conn.execute("""
+                    SELECT menu_item_id AS item_id,
+                           item_name AS name,
+                           unit_price_paise / 100.0 AS price,
+                           quantity,
+                           line_total_paise / 100.0 AS line_total
+                    FROM bill_items
+                    WHERE bill_id = ?
+                    ORDER BY id
+                """, (bill["id"],)).fetchall()
+
+                result.append({
+                    "id": bill["id"],
+                    "customer_name": bill["customer_name"],
+                    "customer_type": bill["customer_type"],
+                    "room_number": bill["room_number"],
+                    "meal_type": bill["meal_type"],
+                    "payment_method": bill["payment_method"],
+                    "subtotal": bill["subtotal_paise"] / 100,
+                    "discount": bill["discount_paise"] / 100,
+                    "total_amount": bill["total_paise"] / 100,
+                    "created_at": bill["created_at"],
+                    "items": [dict(item) for item in items]
+                })
+
+        return jsonify(result)
+
+    except sqlite3.Error:
+        app.logger.exception("Could not retrieve bills")
+        return jsonify(error="Could not load sales."), 500
+
+
+@app.route("/api/bills", methods=["POST"])
+def create_bill():
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify(error="Invalid JSON body."), 400
+
+    customer_name = data.get("customer_name", "Walk-in customer")
+    customer_type = data.get("customer_type", "walk_in")
+    room_number = data.get("room_number")
+    meal_type = data.get("meal_type")
+    payment_method = data.get("payment_method")
+    items = data.get("items")
+    discount = data.get("discount", 0)
+
+    if not isinstance(customer_name, str) or not customer_name.strip():
+        return jsonify(error="Customer name is required."), 400
+
+    if customer_type not in CUSTOMER_TYPES:
+        return jsonify(error="Invalid customer type."), 400
+
+    if customer_type == "resident" and (
+        not isinstance(room_number, str) or not room_number.strip()
+    ):
+        return jsonify(error="Room number is required for resident guests."), 400
+
+    if meal_type not in MEAL_TYPES:
+        return jsonify(error="Invalid meal type."), 400
+
+    if payment_method not in PAYMENT_METHODS:
+        return jsonify(error="Invalid payment method."), 400
+
+    if not isinstance(items, list) or not items or len(items) > 100:
+        return jsonify(error="Add between 1 and 100 bill items."), 400
+
+    try:
+        if isinstance(discount, bool):
+            raise InvalidOperation
+
+        discount_amount = Decimal(str(discount))
+
+        if (
+            not discount_amount.is_finite()
+            or discount_amount < 0
+            or discount_amount > Decimal("1000000")
+            or discount_amount.as_tuple().exponent < -2
+        ):
+            raise InvalidOperation
+
+        discount_paise = int(discount_amount * 100)
+
+        # Validate quantities and combine duplicate item IDs.
+        quantities = {}
+
+        for item in items:
+            if not isinstance(item, dict):
+                return jsonify(error="Invalid bill item."), 400
+
+            item_id = item.get("item_id")
+            quantity = item.get("quantity")
+
+            if (
+                isinstance(item_id, bool)
+                or not isinstance(item_id, int)
+                or item_id <= 0
+            ):
+                return jsonify(error="Invalid menu item ID."), 400
+
+            if (
+                isinstance(quantity, bool)
+                or not isinstance(quantity, int)
+                or not 1 <= quantity <= 10000
+            ):
+                return jsonify(error="Quantity must be between 1 and 10000."), 400
+
+            quantities[item_id] = quantities.get(item_id, 0) + quantity
+
+        if any(qty > 10000 for qty in quantities.values()):
+            return jsonify(error="Total quantity for an item is too high."), 400
+
+    except (InvalidOperation, ValueError, TypeError):
+        return jsonify(error="Invalid discount amount."), 400
+
+    try:
+        with get_db() as conn:
+            # Prices always come from the database, never the browser.
+            priced_items = []
+            subtotal_paise = 0
+
+            for item_id, quantity in quantities.items():
+                menu_item = conn.execute("""
+                    SELECT id, name, price_paise
+                    FROM menu_items
+                    WHERE id = ? AND active = 1
+                """, (item_id,)).fetchone()
+
+                if menu_item is None:
+                    return jsonify(
+                        error=f"Menu item {item_id} is unavailable."
+                    ), 400
+
+                unit_price = menu_item["price_paise"]
+                line_total = unit_price * quantity
+                subtotal_paise += line_total
+
+                priced_items.append({
+                    "id": menu_item["id"],
+                    "name": menu_item["name"],
+                    "unit_price": unit_price,
+                    "quantity": quantity,
+                    "line_total": line_total
+                })
+
+            if discount_paise > subtotal_paise:
+                return jsonify(
+                    error="Discount cannot exceed the subtotal."
+                ), 400
+
+            total_paise = subtotal_paise - discount_paise
+
+            cursor = conn.execute("""
+                INSERT INTO bills (
+                    customer_name, customer_type, room_number,
+                    meal_type, payment_method, subtotal_paise,
+                    discount_paise, total_paise
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                customer_name.strip(),
+                customer_type,
+                room_number.strip() if isinstance(room_number, str) else None,
+                meal_type,
+                payment_method,
+                subtotal_paise,
+                discount_paise,
+                total_paise
+            ))
+
+            bill_id = cursor.lastrowid
+
+            for item in priced_items:
+                conn.execute("""
+                    INSERT INTO bill_items (
+                        bill_id, menu_item_id, item_name,
+                        unit_price_paise, quantity, line_total_paise
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    bill_id,
+                    item["id"],
+                    item["name"],
+                    item["unit_price"],
+                    item["quantity"],
+                    item["line_total"]
+                ))
+
+        return jsonify({
+            "message": "Bill saved successfully.",
+            "bill_id": bill_id,
+            "subtotal": subtotal_paise / 100,
+            "discount": discount_paise / 100,
+            "total_amount": total_paise / 100
+        }), 201
+
+    except sqlite3.Error:
+        app.logger.exception("Could not save bill")
+        return jsonify(error="Could not save bill to the database."), 500
+
+# ---------------- BILLING & SALES ----------------
+
+PAYMENT_METHODS = {"cash", "upi", "card", "other"}
+MEAL_TYPES = {"breakfast", "lunch", "dinner", "other"}
+CUSTOMER_TYPES = {"walk_in", "resident"}
+
+
+def init_billing_db():
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                customer_name TEXT NOT NULL,
+                customer_type TEXT NOT NULL,
+                room_number TEXT,
+                meal_type TEXT NOT NULL,
+                payment_method TEXT NOT NULL,
+                subtotal_paise INTEGER NOT NULL,
+                discount_paise INTEGER NOT NULL DEFAULT 0,
+                total_paise INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bill_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bill_id INTEGER NOT NULL,
+                menu_item_id INTEGER,
+                item_name TEXT NOT NULL,
+                unit_price_paise INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+                line_total_paise INTEGER NOT NULL,
+                FOREIGN KEY (bill_id) REFERENCES bills(id)
+                    ON DELETE CASCADE
+            )
+        """)
+
+
+# Create the billing tables when the application starts.
+init_billing_db()
+
+
+@app.route("/billing")
+def billing():
+    return render_template(
+        "billing.html",
+        title="KitchenSathi | Billing & Sales",
+        user="Developer"
+    )
+
+
+# ---------- CSV SALES IMPORT ----------
+
+MAX_CSV_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def init_imported_sales_db():
+    conn = get_db()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS imported_sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_filename TEXT NOT NULL,
+                order_id TEXT,
+                sale_date TEXT,
+                item_name TEXT,
+                item_type TEXT,
+                item_price REAL,
+                quantity REAL,
+                transaction_amount REAL,
+                transaction_type TEXT,
+                received_by TEXT,
+                time_of_sale TEXT,
+                imported_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Create the table when the app starts.
+init_imported_sales_db()
+
+
+@app.route("/api/sales/import-csv", methods=["POST"])
+def import_sales_csv():
+    if "file" not in request.files:
+        return jsonify({
+            "success": False,
+            "error": "No CSV file provided."
+        }), 400
+
+    file = request.files["file"]
+
+    if not file.filename:
+        return jsonify({
+            "success": False,
+            "error": "Please select a file."
+        }), 400
+
+    if not file.filename.lower().endswith(".csv"):
+        return jsonify({
+            "success": False,
+            "error": "Only CSV files are supported."
+        }), 400
+
+    # Read at most 10 MB + 1 byte to enforce the limit.
+    content = file.stream.read(MAX_CSV_SIZE + 1)
+
+    if len(content) > MAX_CSV_SIZE:
+        return jsonify({
+            "success": False,
+            "error": "CSV file must be smaller than 10 MB."
+        }), 413
+
+    try:
+        # Handle common CSV encodings from Excel.
+        text_data = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text_data = content.decode("cp1252")
+        except UnicodeDecodeError:
+            return jsonify({
+                "success": False,
+                "error": "Could not read the CSV encoding. Save it as UTF-8 CSV."
+            }), 400
+
+    try:
+        reader = csv.DictReader(io.StringIO(text_data))
+
+        if not reader.fieldnames:
+            return jsonify({
+                "success": False,
+                "error": "The CSV file is empty or has no header row."
+            }), 400
+
+        # Normalize header names so Quantity, quantity and " Quantity "
+        # are treated alike.
+        headers = {
+            header.strip().lower(): header
+            for header in reader.fieldnames
+            if header
+        }
+
+        # Maps our database fields to accepted CSV column names.
+        aliases = {
+            "order_id": ["order_id", "order id", "orderid"],
+            "sale_date": ["date", "sale_date", "transaction_date"],
+            "item_name": ["item_name", "item name", "item"],
+            "item_type": ["item_type", "item type", "category"],
+            "item_price": ["item_price", "item price", "price"],
+            "quantity": ["quantity", "qty"],
+            "transaction_amount": [
+                "transaction_amount", "transaction amount",
+                "amount", "total_amount"
+            ],
+            "transaction_type": [
+                "transaction_type", "transaction type", "payment_method"
+            ],
+            "received_by": ["received_by", "received by", "cashier"],
+            "time_of_sale": ["time_of_sale", "time of sale", "time"]
+        }
+
+        resolved = {}
+
+        for field, possible_names in aliases.items():
+            for name in possible_names:
+                if name in headers:
+                    resolved[field] = headers[name]
+                    break
+
+        # These fields are essential for useful sales records.
+        required = ["item_name", "quantity"]
+
+        missing = [
+            field for field in required
+            if field not in resolved
+        ]
+
+        if missing:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Missing required CSV columns: "
+                    + ", ".join(missing)
+                    + ". Required columns: item_name and quantity."
+                )
+            }), 400
+
+        rows_to_insert = []
+        errors = []
+        MAX_ROWS = 100_000
+
+        for line_number, row in enumerate(reader, start=2):
+            if line_number > MAX_ROWS + 1:
+                return jsonify({
+                    "success": False,
+                    "error": f"CSV exceeds the {MAX_ROWS:,}-row limit."
+                }), 400
+
+            # Skip completely blank lines.
+            if not any(
+                str(value or "").strip()
+                for value in row.values()
+            ):
+                continue
+
+            def get_value(field):
+                column = resolved.get(field)
+                if not column:
+                    return None
+
+                value = row.get(column)
+                if value is None:
+                    return None
+
+                value = value.strip()
+                return value if value else None
+
+            def get_number(field):
+                value = get_value(field)
+                if value is None:
+                    return None
+
+                # Remove common currency formatting.
+                cleaned = value.replace(",", "").replace("₹", "").strip()
+
+                try:
+                    number = float(cleaned)
+                    if not math.isfinite(number):
+                        raise ValueError()
+                    return number
+                except ValueError:
+                    raise ValueError(
+                        f"Invalid number in {field}: {value}"
+                    )
+
+            try:
+                item_name = get_value("item_name")
+                quantity = get_number("quantity")
+
+                if not item_name:
+                    raise ValueError("Item name is empty.")
+
+                if quantity is None or quantity <= 0:
+                    raise ValueError("Quantity must be greater than zero.")
+
+                item_price = get_number("item_price")
+                amount = get_number("transaction_amount")
+
+                if item_price is not None and item_price < 0:
+                    raise ValueError("Item price cannot be negative.")
+
+                if amount is not None and amount < 0:
+                    raise ValueError("Transaction amount cannot be negative.")
+
+                rows_to_insert.append((
+                    file.filename,
+                    get_value("order_id"),
+                    get_value("sale_date"),
+                    item_name,
+                    get_value("item_type"),
+                    item_price,
+                    quantity,
+                    amount,
+                    get_value("transaction_type"),
+                    get_value("received_by"),
+                    get_value("time_of_sale")
+                ))
+
+            except ValueError as exc:
+                if len(errors) < 10:
+                    errors.append({
+                        "row": line_number,
+                        "error": str(exc)
+                    })
+
+        if errors:
+            return jsonify({
+                "success": False,
+                "error": "CSV validation failed. No rows were imported.",
+                "details": errors
+            }), 400
+
+        if not rows_to_insert:
+            return jsonify({
+                "success": False,
+                "error": "No valid sales rows found in the CSV."
+            }), 400
+
+        conn = get_db()
+
+        try:
+            conn.executemany("""
+                INSERT INTO imported_sales (
+                    source_filename,
+                    order_id,
+                    sale_date,
+                    item_name,
+                    item_type,
+                    item_price,
+                    quantity,
+                    transaction_amount,
+                    transaction_type,
+                    received_by,
+                    time_of_sale
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows_to_insert)
+
+            conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
+
+        finally:
+            conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": "Sales CSV imported successfully.",
+            "rows_imported": len(rows_to_insert),
+            "filename": file.filename
+        }), 201
+
+    except csv.Error:
+        return jsonify({
+            "success": False,
+            "error": "The CSV file could not be parsed."
+        }), 400
+
+    except Exception:
+        app.logger.exception("CSV sales import failed")
+        return jsonify({
+            "success": False,
+            "error": "An internal error occurred while importing the CSV."
+        }), 500
+
+
+
+@app.route("/api/forecast/predict", methods=["POST"])
+def predict_resort_demand():
+    data = request.get_json(silent=True) or {}
+
+    # Adjust this path if your model is saved elsewhere.
+    model_path = (
+        Path(__file__).resolve().parent.parent
+        / "kitchensathi_model.joblib"
+    )
+
+    if not model_path.exists():
+        return jsonify({
+            "error": f"Model file not found: {model_path}"
+        }), 404
+
+    try:
+        selected_date = date.fromisoformat(data["date"])
+        meal = data["meal"]
+        occupancy = float(data["occupancy_pct"])
+        event = int(data["event"])
+        weather = data["weather"]
+
+        if meal not in {"Breakfast", "Lunch", "Dinner"}:
+            raise ValueError("Meal must be Breakfast, Lunch or Dinner.")
+
+        if not 0 <= occupancy <= 100:
+            raise ValueError("Occupancy must be between 0 and 100.")
+
+        if event not in (0, 1):
+            raise ValueError("Event must be 0 or 1.")
+
+        sample = pd.DataFrame([{
+            "meal": meal,
+            "occupancy_pct": occupancy,
+            "event": event,
+            "weather": weather,
+            "weekday": selected_date.weekday(),
+            "month": selected_date.month,
+        }])
+
+        model = joblib.load(model_path)
+        prediction = max(0, round(float(model.predict(sample)[0])))
+
+        return jsonify({
+            "date": selected_date.isoformat(),
+            "meal": meal,
+            "predicted_covers": prediction,
+        })
+
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+
+@app.route("/api/forecast/predict", methods=["POST"])
+def predict_demand():
+    from pathlib import Path
+    from datetime import datetime
+    import numpy as np
+
+    base_dir = Path(__file__).resolve().parent
+    model_path = base_dir / "models" / "demand_model.joblib"
+
+    if not model_path.exists():
+        return jsonify({"error": "Model not found. Run train_model.py first."}), 404
+
+    data = request.get_json(silent=True) or {}
+    selected_date = data.get("date")
+    selected_time = str(data.get("time_of_sale", "")).strip()
+
+    try:
+        target_date = datetime.strptime(selected_date, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"error": "Choose a valid forecast date."}), 400
+
+    saved = joblib.load(model_path)
+    model = saved["model"]
+    features = saved["features"]
+
+    # Match the exact feature columns used during training.
+    row = {feature: 0 for feature in features}
+    row["weekday"] = target_date.weekday()
+    row["month"] = target_date.month
+    row["day"] = target_date.day
+    row["is_weekend"] = int(target_date.weekday() >= 5)
+
+    time_feature = f"time_of_sale_{selected_time}"
+    if time_feature not in row:
+        return jsonify({
+            "error": "That sale time was not seen during training. Choose an available time."
+        }), 400
+
+    row[time_feature] = 1
+    X = pd.DataFrame([row], columns=features)
+    prediction = float(model.predict(X)[0])
+
+    return jsonify({
+        "date": selected_date,
+        "time_of_sale": selected_time,
+        "predicted_orders": max(0, round(prediction, 1)),
+        "unit": "orders",
+        "note": "Order count is a proxy for demand, not a verified customer count."
+    })
+
+@app.route("/api/sales/imported", methods=["GET"])
+def get_imported_sales():
+    try:
+        with get_db() as conn:
+            rows = conn.execute("""
+                SELECT
+                    id,
+                    source_filename,
+                    order_id,
+                    sale_date,
+                    item_name,
+                    item_type,
+                    item_price,
+                    quantity,
+                    transaction_amount,
+                    transaction_type,
+                    received_by,
+                    time_of_sale,
+                    imported_at
+                FROM imported_sales
+                ORDER BY sale_date DESC, id DESC
+            """).fetchall()
+
+        return jsonify([dict(row) for row in rows])
+
+    except sqlite3.Error:
+        app.logger.exception("Could not load imported sales")
+        return jsonify(error="Could not load imported sales."), 500
+
+
 
 # Initialize the database once when the application starts.
 init_db()
